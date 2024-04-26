@@ -240,7 +240,7 @@ def start_trace(name):
     with open(schema_fn, 'r') as schema_file:
         schema_xml = schema_file.read()
     with STATE.trace.open_tx("Create Root Object"):
-        root = STATE.trace.create_root_object(schema_xml, 'Root')
+        root = STATE.trace.create_root_object(schema_xml, 'FridaRoot')
         root.set_value('_display', util.DBG_VERSION + ' via frida')
     util.set_convenience_variable('_ghidra_tracing', "true")
 
@@ -946,10 +946,10 @@ def put_process(keys, proc):
     procobj = STATE.trace.create_object(ppath)
 
     state = compute_proc_state(pid)
-    procobj.set_value('_state', state)
+    procobj.set_value('State', state)
     pidstr = ('0x{:x}' if radix ==
                 16 else '0{:o}' if radix == 8 else '{}').format(pid)
-    procobj.set_value('_pid', pid)
+    procobj.set_value('PIDS', pid)
     procobj.set_value('Name', proc.name)
     procobj.set_value('_display', '{} {}'.format(pidstr, proc.name))
     STATE.trace.create_object(ppath+".Memory").insert()
@@ -975,13 +975,13 @@ def put_state(event_process):
     ipath = PROCESS_PATTERN.format(pid=event_process)
     procobj = STATE.trace.create_object(ipath)
     state = compute_proc_state(event_process)
-    procobj.set_value('_state', state)
+    procobj.set_value('State', state)
     procobj.insert()
     tid = util.selected_thread()
     if tid is not None:
         ipath = THREAD_PATTERN.format(pid=event_process, tid=tid)
         threadobj = STATE.trace.create_object(ipath)
-        threadobj.set_value('_state', state)
+        threadobj.set_value('State', state)
         threadobj.insert()
 
 
@@ -1007,7 +1007,7 @@ def put_available():
         keys.append(AVAILABLE_KEY_PATTERN.format(pid=id))
         pidstr = ('0x{:x}' if radix ==
                   16 else '0{:o}' if radix == 8 else '{}').format(id)
-        procobj.set_value('_pid', id)
+        procobj.set_value('PID', id)
         procobj.set_value('Name', name)
         procobj.set_value('_display', '{} {}'.format(pidstr, name))
         procobj.insert()
@@ -1036,7 +1036,7 @@ def put_applications():
         keys.append(APPLICATION_KEY_PATTERN.format(pid=id))
         pidstr = ('0x{:x}' if radix ==
                   16 else '0{:o}' if radix == 8 else '{}').format(id)
-        procobj.set_value('_pid', id)
+        procobj.set_value('PID', id)
         procobj.set_value('Name', name)
         procobj.set_value('_display', '{} {}'.format(pidstr, name))
         procobj.insert()
@@ -1102,10 +1102,10 @@ def put_environment():
     sid = util.selected_session()
     epath = ENV_PATTERN.format(sid=sid)
     envobj = STATE.trace.create_object(epath)
-    envobj.set_value('_debugger', 'frida')
-    envobj.set_value('_arch', arch.get_arch())
-    envobj.set_value('_os', arch.get_osabi())
-    envobj.set_value('_endian', arch.get_endian())
+    envobj.set_value('OS', arch.get_osabi())
+    envobj.set_value('Arch', arch.get_arch())
+    envobj.set_value('Endian', arch.get_endian())
+    envobj.set_value('Debugger', 'frida')
     params = util.dbg.query_system_parameters()
     for k in params.keys():
         v = params[k]
@@ -1144,10 +1144,7 @@ def put_region_callback(message, data):
     base_base, base_addr = mapper.map(pid, int(base, 0))
     if base_base != base_addr.space:
         STATE.trace.create_overlay_space(base_base, base_addr.space)
-    robj.set_value('_offset', base_addr)
-    robj.set_value('_range', base_addr.extend(size))
-    robj.set_value('Base', base)
-    robj.set_value('Size', hex(size))
+    robj.set_value('Range', base_addr.extend(size))
     util.current_state[base] = size
     robj.set_value('Protection', prot)
     if 'file'in r.keys():
@@ -1184,10 +1181,7 @@ def put_regions_callback(message, data):
         base_base, base_addr = mapper.map(pid, int(base, 0))
         if base_base != base_addr.space:
             STATE.trace.create_overlay_space(base_base, base_addr.space)
-        robj.set_value('_offset', base_addr)
-        robj.set_value('_range', base_addr.extend(size))
-        robj.set_value('Base', base)
-        robj.set_value('Size', hex(size))
+        robj.set_value('Range', base_addr.extend(size))
         util.current_state[base] = size
         robj.set_value('Protection', prot)
         if 'file'in r.keys():
@@ -1238,10 +1232,7 @@ def put_kregions_callback(message, data):
         base_base, base_addr = mapper.map(pid, int(base, 0))
         if base_base != base_addr.space:
             STATE.trace.create_overlay_space(base_base, base_addr.space)
-        robj.set_value('_offset', base_addr)
-        robj.set_value('_range', base_addr.extend(size))
-        robj.set_value('Base', base)
-        robj.set_value('Size', hex(size))
+        robj.set_value('Range', base_addr.extend(size))
         util.current_state[base] = size
         robj.set_value('Protection', prot)
         robj.set_value('_display', '{}:{:x} {} '.format(base, size, prot))
@@ -1285,9 +1276,7 @@ def put_heap_callback(message, data):
         base_base, base_addr = mapper.map(pid, int(base, 0))
         if base_base != base_addr.space:
             STATE.trace.create_overlay_space(base_base, base_addr.space)
-        robj.set_value('_range', base_addr.extend(size))
-        robj.set_value('Base', base)
-        robj.set_value('Size', hex(size))
+        robj.set_value('Range', base_addr.extend(size))
         robj.set_value('_display', '{}:{:x}'.format(base, size))
         robj.insert()
     STATE.trace.proxy_object_path(
@@ -1332,12 +1321,9 @@ def put_modules_callback(message, data):
         base_base, base_addr = mapper.map(pid, int(base, 0))
         if base_base != base_addr.space:
             STATE.trace.create_overlay_space(base_base, base_addr.space)
-        mobj.set_value('_range', base_addr.extend(size))
-        mobj.set_value('_module_name', name)
+        mobj.set_value('Range', base_addr.extend(size))
         mobj.set_value('Name', name)
         mobj.set_value('Path', path)
-        mobj.set_value('Base', base)
-        mobj.set_value('Size', hex(size))
         util.current_state[path] = base
         util.current_state[base] = size
         mobj.set_value('_display', '{}:{:x} {} '.format(base, size, name))
@@ -1386,10 +1372,8 @@ def put_kmodules_callback(message, data):
         base_base, base_addr = mapper.map(0, int(base, 0))
         if base_base != base_addr.space:
             STATE.trace.create_overlay_space(base_base, base_addr.space)
-        mobj.set_value('_range', base_addr.extend(size))
+        mobj.set_value('Range', base_addr.extend(size))
         mobj.set_value('Name', name)
-        mobj.set_value('Base', base)
-        mobj.set_value('Size', hex(size))
         util.current_state[base] = size
         mobj.set_value('_display', '{}:{:x} {} '.format(base, size, name))
         mobj.insert()
@@ -1434,9 +1418,7 @@ def put_sections_callback(message, data):
         base_base, base_addr = mapper.map(pid, int(base, 0))
         if base_base != base_addr.space:
             STATE.trace.create_overlay_space(base_base, base_addr.space)
-        robj.set_value('_range', base_addr.extend(size))
-        robj.set_value('Base', base)
-        robj.set_value('Size', hex(size))
+        robj.set_value('Range', base_addr.extend(size))
         util.current_state[base] = size
         robj.set_value('Protection', prot)
         if 'file'in r.keys():
@@ -1729,13 +1711,13 @@ def put_threads_callback(message, data):
         tobj = STATE.trace.create_object(tpath)
         keys.append(THREAD_KEY_PATTERN.format(tid=tid))
 
-        tobj.set_value('_tid', tid)
+        tobj.set_value('TID', tid)
         tobj.set_value('Name', name)
         tobj.set_value('_short_display',
                        '{:x} {:x}:{:x}'.format(i, pid, tid))
         tobj.set_value('_display', compute_thread_display(i, pid, tid, t))
         istate = compute_proc_state(tid)
-        tobj.set_value('_state', istate)
+        tobj.set_value('State', istate)
         tobj.insert()
         i += 1
         
@@ -1816,11 +1798,11 @@ def put_frames_callback(message, data):
         base, pc = mapper.map(pid, int(addr,0))
         if base != pc.space:
             STATE.trace.create_overlay_space(base, pc.space)
-        fobj.set_value('_pc', pc)
+        fobj.set_value('PC', pc)
         if name is not None:
             fobj.set_value('Name', name)
         if module is not None:
-            fobj.set_value('_func', module)
+            fobj.set_value('Function', module)
             fobj.set_value('Module', module)
         if file is not None:
             fobj.set_value('File', file)
