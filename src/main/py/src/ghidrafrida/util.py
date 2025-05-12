@@ -17,6 +17,7 @@ from collections import namedtuple
 from concurrent.futures import Future
 import concurrent.futures
 #from ctypes import *
+from dataclasses import dataclass
 import functools
 import io
 import os
@@ -29,7 +30,12 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 
 import frida # type: ignore
 
-DbgVersion = namedtuple('DbgVersion', ['full', 'name', 'dotted', 'arch'])
+@dataclass(frozen=True)
+class DbgVersion:
+	full: str
+	name: str
+	dotted: str
+	arch: str
 
 targets = {}
 processes = {}
@@ -90,8 +96,11 @@ class DebuggeeRunningException(BaseException):
     pass
 
 
+T = TypeVar('T')
+
+
 class DbgExecutor(object):
-    def __init__(self, ghidra_dbg):
+    def __init__(self, ghidra_dbg: 'GhidraDbg') -> None:
         self._ghidra_dbg = ghidra_dbg
         self._work_queue = queue.SimpleQueue()
         self._thread = _Worker(ghidra_dbg._new_base,
@@ -134,8 +143,11 @@ class WrongThreadException(BaseException):
     pass
 
 
+C = TypeVar('C', bound=Callable[..., Any])
+
+
 class GhidraDbg(object):
-    def __init__(self, device_id):
+    def __init__(self, device_id: Any) -> None:
         self._device_id = device_id
         self._queue = DbgExecutor(self)
         self._thread = self._queue._thread
@@ -154,7 +166,7 @@ class GhidraDbg(object):
                      ]:
             setattr(self, name, self.eng_thread(getattr(base, name)))
 
-    def _new_base(self):
+    def _new_base(self) -> None:
         if self._device_id == "local":
             self._protected_base = frida.get_local_device()
         elif self._device_id == "remote":
@@ -165,10 +177,10 @@ class GhidraDbg(object):
             self._protected_base = frida.get_device(self._device_id)
 
     @property
-    def _base(self):
+    def _base(self) -> Any:
         return self._protected_base
 
-    def run(self, fn, *args, **kwargs):
+    def run(self, fn: Callable[..., T], *args, **kwargs) -> T:
         # TODO: Remove this check?
         if hasattr(self, '_thread') and threading.current_thread() is self._thread:
             raise WrongThreadException()
@@ -180,23 +192,23 @@ class GhidraDbg(object):
             except concurrent.futures.TimeoutError:
                 pass
 
-    def run_async(self, fn, *args, **kwargs):
+    def run_async(self, fn: Callable[..., T], *args, **kwargs) -> Future[T]:
         return self._queue.submit(fn, *args, **kwargs)
 
-    def check_thread(func):
+    def check_thread(func: C) -> C:
         '''
         For methods inside of GhidraDbg, ensure it runs on the engine
         thread
         '''
         @functools.wraps(func)
-        def _func(self, *args, **kwargs):
+        def _func(self, *args, **kwargs) -> Any:
             if threading.current_thread() is self._thread:
                 return func(self, *args, **kwargs)
             else:
                 return self.run(func, self, *args, **kwargs)
-        return _func
+        return cast(C, _func)
 
-    def eng_thread(self, func):
+    def eng_thread(self, func: C) -> C:
         '''
         For methods and functions outside of GhidraDbg, ensure it
         runs on this GhidraDbg's engine thread
@@ -207,14 +219,14 @@ class GhidraDbg(object):
                 return func(*args, **kwargs)
             else:
                 return self.run(func, *args, **kwargs)
-        return _func
+        return cast(C, _func)
 
     @check_thread
-    def _install_stdin(self):
+    def _install_stdin(self) -> None:
         pass
 
     # Manually decorated to preserve undecorated
-    def _dispatch_events(self, timeout=-1):
+    def _dispatch_events(self, timeout: int = -1) -> None:
          pass
     dispatch_events = check_thread(_dispatch_events)
 
@@ -229,34 +241,18 @@ if device is not None:
     dbg = GhidraDbg(device)
 
 
-def compute_frida_ver():
-    pat = re.compile(
-        '(?P<name>.*Debugger.*) Version (?P<dotted>[\\d\\.]*) (?P<arch>\\w*)')
-    if dbg is None:
-        return DbgVersion('Unknown', 'Unknown', '0', 'Unknown')
-    blurb = dbg.cmd('version')  # type: ignore
-    matches = [pat.match(l) for l in blurb.splitlines() if pat.match(l)]
-    if len(matches) == 0:
-        return DbgVersion('Unknown', 'Unknown', '0', 'Unknown')
-    m = matches[0]
-    if m is None:
-        return DbgVersion('Unknown', 'Unknown', '0', 'Unknown')
-    return DbgVersion(full=m.group(), **m.groupdict())
-    name, dotted_and_arch = full.split(' Version ')
-
-
 DBG_VERSION = frida.__version__
 
-def on_message_to_file(message, data):
+def on_message_to_file(message: Dict[str, Any], data: Any) -> None:
     f = open("script_results", "w")
     f.write(str(message['payload']))
     f.close()
 
-def on_message_print(message, data):
+def on_message_print(message: Dict[str, Any], data: Any) -> None:
     print(f"{message}, {data}")
     
 
-def load_permanent_script(name, text, callback):
+def load_permanent_script(name: str, text: str, callback: Callable) -> None:
     pid = selected_process()
     if pid is None:
         print(f"no selection for process")
@@ -267,7 +263,7 @@ def load_permanent_script(name, text, callback):
     script.load()
 
 
-def run_script_no_ret(name, text, callback):
+def run_script_no_ret(name: str, text: str, callback: Callable) -> None:
     pid = selected_process()
     if pid is None:
         print(f"no selection for process")
@@ -280,7 +276,7 @@ def run_script_no_ret(name, text, callback):
     script.unload()
 
 
-def run_script(name, text, callback):
+def run_script(name: str, text: str, callback: Callable) -> None:
     pid = selected_process()
     if pid is None:
         print(f"no selection for process")
@@ -298,7 +294,7 @@ def run_script(name, text, callback):
     script.unload()
 
 
-def run_script_with_data(name, text, data, callback):
+def run_script_with_data(name: str, text: str, data: str, callback: Callable) -> None:
     pid = selected_process()
     if pid is None:
         print(f"no selection for process")
@@ -315,9 +311,9 @@ def run_script_with_data(name, text, data, callback):
     script.load()
     script.off('message', callback)
     script.unload()
-    
-    
-def selected_session():
+
+
+def selected_session() -> Optional[int]:
     try:
         return current_state['sid']
     except Exception:
@@ -325,7 +321,7 @@ def selected_session():
 
 
 
-def selected_process():
+def selected_process() -> Optional[int]:
     try:
         return current_state['pid']
     except Exception:
@@ -333,7 +329,7 @@ def selected_process():
 
 
 
-def selected_thread():
+def selected_thread() -> Optional[int]:
     try:
         return current_state['tid']
     except Exception:
@@ -341,39 +337,39 @@ def selected_thread():
 
 
 
-def selected_frame():
+def selected_frame() -> Optional[int]:
     try:
         return current_state['fid']
     except Exception:
         return None
 
 
-def select_session(id: int):
+def select_session(id: int) -> None:
     global current_state
     current_state['sid'] = id
 
 
-def select_process(id: int):
+def select_process(id: int) -> None:
     global current_state
     current_state['pid'] = id
 
 
-def select_thread(id: int):
+def select_thread(id: int) -> None:
     global current_state
     current_state['tid'] = id
 
 
-def select_frame(id: int):
+def select_frame(id: int) -> None:
     global current_state
     current_state['fid'] = id
 
 
-def put_module_address(path, addr):
+def put_module_address(path: str, addr: Any) -> None:
     global current_state
     current_state[path] = addr
     
 
-def get_module_address(path):
+def get_module_address(path: str) -> Any:
     global current_state
     return current_state[path]
     
@@ -383,10 +379,10 @@ def parse_and_eval(expr: Union[str, int],
     return int(expr)
 
 
-conv_map = {}
+conv_map: Dict[str, str]  = {}
 
 
-def get_convenience_variable(id):
+def get_convenience_variable(id: str) -> Any:
     if id not in conv_map:
         return "auto"
     val = conv_map[id]
@@ -395,5 +391,5 @@ def get_convenience_variable(id):
     return val
 
 
-def set_convenience_variable(id, value):
+def set_convenience_variable(id: str, value: Any) -> None:
     conv_map[id] = value

@@ -18,7 +18,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 import re
 import sys
-from typing import Annotated, Optional, Union
+from typing import Annotated, Any, Optional, Union
 
 from ghidratrace import sch
 from ghidratrace.client import (
@@ -70,103 +70,104 @@ SYMBOLS_PATTERN = extre(MODULE_PATTERN, '\\.Symbols')
 SYMBOL_PATTERN = extre(SYMBOLS_PATTERN, '\\[(?P<addr>\\w*)\\]')
 
 
-def find_object_by_pattern(pattern, object, key, err_msg):
+def find_object_by_pattern(pattern: re.Pattern, object: TraceObject, key: str,
+                         err_msg: str) -> Any:
     mat = pattern.fullmatch(object.path)
     if mat is None:
         raise TypeError(f"{object} is not {err_msg}")
     return mat[key]
 
 
-def find_availpid_by_obj(object):
+def find_availpid_by_obj(object: TraceObject) -> int:
     return int(find_object_by_pattern(AVAILABLE_PATTERN, object, 'pid', "an Available"))
 
 
-def find_session_by_obj(object):
+def find_session_by_obj(object: TraceObject) -> int:
     return int(find_object_by_pattern(SESSION_PATTERN, object, 'sid', "a Session"))
 
 
-def find_proc_by_obj(object):
+def find_proc_by_obj(object: TraceObject) -> int:
     return int(find_object_by_pattern(PROCESS_PATTERN, object, 'pid', "an Process"))
 
 
-def find_proc_by_procbreak_obj(object):
+def find_proc_by_procbreak_obj(object: TraceObject) -> str:
     return find_object_by_pattern(PROC_BREAKS_PATTERN, object, 'pid',
                                   "a BreakpointLocationContainer")
     
 
-def find_proc_by_env_obj(object):
+def find_proc_by_env_obj(object: TraceObject) -> str:
     return find_object_by_pattern(ENV_PATTERN, object, 'pid', "an Environment")
 
 
-def find_proc_by_threads_obj(object):
+def find_proc_by_threads_obj(object: TraceObject) -> str:
     return find_object_by_pattern(THREADS_PATTERN, object, 'pid', "a ThreadContainer")
 
 
-def find_proc_by_mem_obj(object):
+def find_proc_by_mem_obj(object: TraceObject) -> str:
     return find_object_by_pattern(MEMORY_PATTERN, object, 'pid', "a Memory")
 
 
-def find_proc_by_modules_obj(object):
+def find_proc_by_modules_obj(object: TraceObject) -> str:
     return find_object_by_pattern(MODULES_PATTERN, object, 'pid', "a ModuleContainer")
 
 
-def find_region_by_obj(object):
+def find_region_by_obj(object: TraceObject) -> str:
     return find_object_by_pattern(REGION_PATTERN, object, 'addr', "a Region")
 
 
-def find_module_by_obj(object):
+def find_module_by_obj(object: TraceObject) -> str:
     return find_object_by_pattern(MODULE_PATTERN, object, 'modpath', "a Module")
 
 
-def find_section_by_obj(object):
+def find_section_by_obj(object: TraceObject) -> str:
     return find_object_by_pattern(SECTION_PATTERN, object, 'addr', "a Section")
 
 
-def find_module_by_dependencies_obj(object):
+def find_module_by_dependencies_obj(object: TraceObject) -> str:
     return find_object_by_pattern(DEPENDENCIES_PATTERN, object, 'modpath', "a DependencyContainer")
 
 
-def find_module_by_exports_obj(object):
+def find_module_by_exports_obj(object: TraceObject) -> str:
     return find_object_by_pattern(EXPORTS_PATTERN, object, 'modpath', "a ExportContainer")
 
 
-def find_module_by_imports_obj(object):
+def find_module_by_imports_obj(object: TraceObject) -> str:
     return find_object_by_pattern(IMPORTS_PATTERN, object, 'modpath', "a ImportContainer")
 
 
-def find_module_by_sections_obj(object):
+def find_module_by_sections_obj(object: TraceObject) -> str:
     return find_object_by_pattern(SECTIONS_PATTERN, object, 'modpath', "a SectionContainer")
 
 
-def find_module_by_symbols_obj(object):
+def find_module_by_symbols_obj(object: TraceObject) -> str:
     return find_object_by_pattern(SYMBOLS_PATTERN, object, 'modpath', "a SymbolContainer")
 
 
-def find_thread_by_obj(object):
+def find_thread_by_obj(object: TraceObject) -> str:
     return find_object_by_pattern(THREAD_PATTERN, object, 'tid', "a Thread")
 
 
-def find_thread_by_stack_obj(object):
+def find_thread_by_stack_obj(object: TraceObject) -> str:
     return find_object_by_pattern(STACK_PATTERN, object, 'tid', "a Stack")
 
 
-def find_thread_by_regs_obj(object):
+def find_thread_by_regs_obj(object: TraceObject) -> str:
     return find_object_by_pattern(REGS_PATTERN0, object, 'tid', "a RegisterValueContainer")
 
 
-def find_frame_by_obj(object):
+def find_frame_by_obj(object: TraceObject) -> int:
     return int(find_object_by_pattern(FRAME_PATTERN, object, 'level', "a StackFrame"))
 
 
-def find_export_by_obj(object):
+def find_export_by_obj(object: TraceObject) -> str:
     return find_object_by_pattern(EXPORT_PATTERN, object, 'addr', "an Import")
 
 
-def find_import_by_obj(object):
+def find_import_by_obj(object: TraceObject) -> str:
     return find_object_by_pattern(IMPORT_PATTERN, object, 'addr', "an Import")
 
 
-def find_symbol_by_obj(object):
+def find_symbol_by_obj(object: TraceObject) -> str:
     return find_object_by_pattern(SYMBOL_PATTERN, object, 'addr', "an Import")
 
 
@@ -521,7 +522,9 @@ def kill(process: Process) -> None:
 def go(process: Process) -> None:
     """Continue execution of the process."""
     pid = find_proc_by_obj(process)
-    dbg().resume(pid)
+    debug = dbg()
+    if debug is not None:
+        debug.resume(pid)
 
 
 @REGISTRY.method()
@@ -595,7 +598,7 @@ sample = "code => {const cw = new X86Writer(code, { pc: ptr('$ADDR') }); cw.putN
 def patch_export(function: Export, addr: Address, size: int,
                  apply: str = sample) -> None:
     """Intercept an exported function."""
-    addr = find_export_by_obj(function)
+    find_export_by_obj(function)
     patch(addr, size, apply)
 
 
@@ -603,7 +606,7 @@ def patch_export(function: Export, addr: Address, size: int,
 def patch_import(function: Import, addr: Address, size: int,
                  apply: str = sample) -> None:
     """Intercept an imported function."""
-    addr = find_import_by_obj(function)
+    find_import_by_obj(function)
     patch(addr, size, apply)
 
 
@@ -611,7 +614,7 @@ def patch_import(function: Import, addr: Address, size: int,
 def patch_symbol(function: Symbol, addr: Address, size: int,
                  apply: str = sample) -> None:
     """Intercept a function by symbol."""
-    addr = find_symbol_by_obj(function)
+    find_symbol_by_obj(function)
     patch(addr, size, apply)
 
 
@@ -640,7 +643,7 @@ def patch(addr: Address, size: Optional[int], apply: str,
 def watch_region(region: MemoryRegion, addr: Address, size: int, onAccess: str,
                  callback: str = "on_message_print") -> None:
     """Watch an address range by region."""
-    addr = find_region_by_obj(region)
+    find_region_by_obj(region)
     watch(addr, size, onAccess, callback)
 
 
@@ -657,7 +660,7 @@ def watch_module(module: Module, addr: Address, size: int, onAccess: str,
 def watch_section(section: Section, addr: Address, size: int, onAccess: str,
                   callback: str = "on_message_print") -> None:
     """Watch an address range by section."""
-    addr = find_section_by_obj(section)
+    find_section_by_obj(section)
     watch(addr, size, onAccess, callback)
 
 
@@ -665,7 +668,7 @@ def watch_section(section: Section, addr: Address, size: int, onAccess: str,
 def watch_symbol(symbol: Symbol, addr: Address, size: int, onAccess: str,
                  callback: str = "on_message_print") -> None:
     """Watch an address range by symbol."""
-    addr = find_symbol_by_obj(symbol)
+    find_symbol_by_obj(symbol)
     watch(addr, size, onAccess, callback)
 
 
@@ -864,4 +867,7 @@ def addScript(textOrFile):
 
 
 def dbg():
-    return util.dbg._base
+    debug = util.dbg
+    if debug is None:
+        return None
+    return debug._base

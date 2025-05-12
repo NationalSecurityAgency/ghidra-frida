@@ -27,9 +27,10 @@ from typing import (Any, Callable, Dict, Generator, List, Optional, Sequence,
 
 from ghidratrace import sch
 from ghidratrace.client import Client, Address, AddressRange, Schedule, Trace, TraceObject, Transaction
+from ghidratrace.display import print_tabular_values, wait
 
 import frida  # type: ignore
-from frida.core import Session
+from frida.core import Session  # type: ignore
 
 from . import util, arch, methods
 
@@ -361,12 +362,7 @@ def attach_by_device(id: int) -> None:
 
     util.dbg = util.GhidraDbg(id)
     ghidra_trace_connect(os.getenv('GHIDRA_TRACE_RMI_ADDR'))
-    # args = os.getenv('OPT_TARGET_ARGS')
-    # if args:
-    #    args = ' ' + args
     ghidra_trace_start(os.getenv('OPT_TARGET_IMG'))
-    # ghidra_trace_create(
-    #    os.getenv('OPT_TARGET_IMG') + args, attach=True)
     repl()
 
 
@@ -463,18 +459,7 @@ def ghidra_trace_new_snap(description: Optional[str] = None,
     return {'snap': STATE.require_trace().snapshot(description)}
 
 
-def ghidra_trace_set_snap(snap: int) -> None:
-    """
-    Go to a snapshot
-
-    Subsequent modifications to machine state will affect the given snapshot.
-    """
-
-    trace, tx = STATE.require_tx()
-    trace.extra.set_snap(snap)
-
-
-def quantize_pages(start: int, end: int):
+def quantize_pages(start: int, end: int) -> Tuple[int, int]:
     return (start // PAGE_SIZE * PAGE_SIZE, (end+PAGE_SIZE-1) // PAGE_SIZE*PAGE_SIZE)
 
 
@@ -504,7 +489,7 @@ last_address = 0
 last_length = 4096
 
 
-def put_mem_callback(message: dict[str, Any], data: Any):
+def put_mem_callback(message: dict[str, Any], data: Any) -> None:
     trace = STATE.require_trace()
     pid = util.selected_process()
     if pid is None:
@@ -517,7 +502,7 @@ def put_mem_callback(message: dict[str, Any], data: Any):
         return
     if type(values) is dict:
         putmem_state(last_address, last_address+last_length, 'error')
-        return {'count': 0}
+        return
 
     buf = []
     for l in values.split("\n"):
@@ -529,10 +514,10 @@ def put_mem_callback(message: dict[str, Any], data: Any):
         if base != addr.space:
             trace.create_overlay_space(base, addr.space)
         count = trace.put_bytes(addr, bytes(buf))
-        return {'count': count}
+        return
 
 
-def putmem(address, length) -> None:
+def putmem(address: Union[str, int], length: Union[str, int]) -> None:
     global last_address
     global last_length
     if address is None:
@@ -549,7 +534,7 @@ def putmem(address, length) -> None:
     util.run_script_with_data("read_memory", cmd, address, put_mem_callback)
 
 
-def ghidra_trace_putmem(address, length, pages=True) -> None:
+def ghidra_trace_putmem(address: Union[str, int], length: int, pages: bool = True) -> None:
     """
     Record the given block of memory into the Ghidra trace.
     """
@@ -560,7 +545,7 @@ def ghidra_trace_putmem(address, length, pages=True) -> None:
     return putmem(address, length)
 
 
-def write_mem(address, buf) -> None:
+def write_mem(address: Union[str, int], buf: bytes) -> None:
     # TODO: UNTESTED
     if isinstance(address, int):
         address = str(address)
@@ -574,7 +559,7 @@ def write_mem(address, buf) -> None:
     util.run_script("write_memory", cmd, util.on_message_print)
 
 
-def putmem_state(address, length, state, pages=True) -> None:
+def putmem_state(address: Union[str, int], length: Union[str, int], state: str, pages: bool = True) -> None:
     trace = STATE.require_trace()
     trace.validate_state(state)
     start, end = eval_range(address, length)
@@ -589,7 +574,7 @@ def putmem_state(address, length, state, pages=True) -> None:
     trace.set_memory_state(addr.extend(end - start), state)
 
 
-def ghidra_trace_putmem_state(address, length, state, pages=True) -> None:
+def ghidra_trace_putmem_state(address: Union[str, int], length: Union[str, int], state: str, pages: bool = True) -> None:
     """
     Set the state of the given range of memory in the Ghidra trace.
     """
@@ -598,7 +583,7 @@ def ghidra_trace_putmem_state(address, length, state, pages=True) -> None:
     return putmem_state(address, length, state, pages)
 
 
-def ghidra_trace_delmem(address, length) -> None:
+def ghidra_trace_delmem(address: Union[str, int], length: Union[str, int]) -> None:
     """
     Delete the given range of memory from the Ghidra trace.
 
@@ -678,7 +663,7 @@ def ghidra_trace_create_obj(path: str) -> None:
     print("Created object: id={}, path='{}'".format(obj.id, obj.path))
 
 
-def ghidra_trace_insert_obj(path) -> None:
+def ghidra_trace_insert_obj(path: str) -> None:
     """
     Insert an object into the Ghidra trace.
     """
@@ -690,7 +675,7 @@ def ghidra_trace_insert_obj(path) -> None:
     print("Inserted object: lifespan={}".format(span))
 
 
-def ghidra_trace_remove_obj(path) -> None:
+def ghidra_trace_remove_obj(path: str) -> None:
     """
     Remove an object from the Ghidra trace.
 
@@ -702,29 +687,29 @@ def ghidra_trace_remove_obj(path) -> None:
     trace.proxy_object_path(path).remove()
 
 
-def to_bytes(value):
+def to_bytes(value: Sequence) -> bytes:
     return bytes(ord(value[i]) if type(value[i]) == str else int(value[i]) for i in range(0, len(value)))
 
 
-def to_string(value, encoding):
+def to_string(value: Sequence, encoding: str) -> str:
     b = bytes(ord(value[i]) if type(value[i]) == str else int(
         value[i]) for i in range(0, len(value)))
     return str(b, encoding)
 
 
-def to_bool_list(value):
+def to_bool_list(value: Sequence) -> List[bool]:
     return [bool(value[i]) for i in range(0, len(value))]
 
 
-def to_int_list(value):
+def to_int_list(value: Sequence) -> List[int]:
     return [ord(value[i]) if type(value[i]) == str else int(value[i]) for i in range(0, len(value))]
 
 
-def to_short_list(value):
+def to_short_list(value: Sequence) -> List[int]:
     return [ord(value[i]) if type(value[i]) == str else int(value[i]) for i in range(0, len(value))]
 
 
-def to_string_list(value, encoding):
+def to_string_list(value: Sequence, encoding: str) -> List[str]:
     return [to_string(value[i], encoding) for i in range(0, len(value))]
 
 
@@ -835,67 +820,14 @@ def ghidra_trace_get_obj(path: str) -> None:
     print("{}\t{}".format(object.id, object.path))
 
 
-class TableColumn(object):
-    def __init__(self, head):
-        self.head = head
-        self.contents = [head]
-        self.is_last = False
-
-    def add_data(self, data):
-        self.contents.append(str(data))
-
-    def finish(self):
-        self.width = max(len(d) for d in self.contents) + 1
-
-    def print_cell(self, i):
-        print(
-            self.contents[i] if self.is_last else self.contents[i].ljust(self.width), end='')
-
-
-class Tabular(object):
-    def __init__(self, heads):
-        self.columns = [TableColumn(h) for h in heads]
-        self.columns[-1].is_last = True
-        self.num_rows = 1
-
-    def add_row(self, datas):
-        for c, d in zip(self.columns, datas):
-            c.add_data(d)
-        self.num_rows += 1
-
-    def print_table(self):
-        for c in self.columns:
-            c.finish()
-        for rn in range(self.num_rows):
-            for c in self.columns:
-                c.print_cell(rn)
-            print('')
-
-
-def val_repr(value: Any):
-    if isinstance(value, TraceObject):
-        return value.path
-    elif isinstance(value, Address):
-        return '{}:{:08x}'.format(value.space, value.offset)
-    return repr(value)
-
-
-def print_values(values: Any) -> None:
-    table = Tabular(['Parent', 'Key', 'Span', 'Value', 'Type'])
-    for v in values:
-        table.add_row(
-            [v.parent.path, v.key, v.span, val_repr(v.value), v.schema])
-    table.print_table()
-
-
 def ghidra_trace_get_values(pattern: str) -> None:
     """
     List all values matching a given path pattern.
     """
 
     trace = STATE.require_trace()
-    values = trace.get_values(pattern)
-    print_values(values)
+    values = wait(trace.get_values(pattern))
+    print_tabular_values(values, print)
 
 
 def ghidra_trace_get_values_rng(address: Union[str, int],
@@ -911,8 +843,8 @@ def ghidra_trace_get_values_rng(address: Union[str, int],
         return
     base, addr = trace.extra.require_mm().map(pid, start)
     # Do not create the space. We're querying. No tx.
-    values = trace.get_values_intersecting(addr.extend(end - start))
-    print_values(values)
+    values = wait(trace.get_values_intersecting(addr.extend(end - start)))
+    print_tabular_values(values, print)
 
 
 def activate(path: Optional[str] = None) -> None:
@@ -1225,8 +1157,8 @@ def put_region_callback(message: dict[str, Any], data: Any) -> None:
     robj.insert()
 
 
-def put_region(address) -> None:
-    cmd = "result = Process.findRangeByAddress(ptr(" + str(address) + "));"
+def put_region(addr: str) -> None:
+    cmd = "result = Process.findRangeByAddress(ptr(" + addr + "));"
     util.run_script("find_range", cmd, put_region_callback)
 
 
@@ -1268,7 +1200,7 @@ def put_regions_callback(message: dict[str, Any], data: Any) -> None:
         REGIONS_PATTERN.format(sid=sid, pid=pid)).retain_values(keys)
 
 
-def put_regions(running=False) -> None:
+def put_regions(running: bool = False) -> None:
     if running:
         return
     cmd = "result = Process.enumerateRanges('---');"
@@ -1316,7 +1248,7 @@ def put_kregions_callback(message: dict[str, Any], data: Any) -> None:
         KREGIONS_PATTERN.format(sid=sid, pid=pid)).retain_values(keys)
 
 
-def put_kregions(running=False) -> None:
+def put_kregions(running: bool = False) -> None:
     if running:
         return
     cmd = "result = Kernel.enumerateRanges('---');"
@@ -1361,7 +1293,7 @@ def put_heap_callback(message: dict[str, Any], data: Any) -> None:
         HEAP_PATTERN.format(sid=sid, pid=pid)).retain_values(keys)
 
 
-def put_heap(running=False) -> None:
+def put_heap(running: bool = False) -> None:
     if running:
         return
     cmd = "result = Process.enumerateMallocRanges('---');"
@@ -1418,7 +1350,7 @@ def put_modules_callback(message: dict[str, Any], data: Any) -> None:
         MODULES_PATTERN.format(sid=sid, pid=pid)).retain_values(keys)
 
 
-def put_modules(running=False) -> None:
+def put_modules(running: bool = False) -> None:
     if running:
         return
     cmd = "result = Process.enumerateModules();"
@@ -1463,7 +1395,7 @@ def put_kmodules_callback(message: dict[str, Any], data: Any) -> None:
         KMODULES_PATTERN.format(sid=sid)).retain_values(keys)
 
 
-def put_kmodules(running=False) -> None:
+def put_kmodules(running: bool = False) -> None:
     if running:
         return
     cmd = "result = Kernel.enumerateModules();"
@@ -1520,19 +1452,19 @@ def put_sections_callback(message: dict[str, Any], data: Any) -> None:
         SECTIONS_PATTERN.format(sid=sid, pid=pid, modpath=cbdata)).retain_values(keys)
 
 
-def put_sections(modpath, addr, running=False) -> None:
+def put_sections(modpath: str, addr: str, running: bool = False) -> None:
     if running:
         return
     sid = util.selected_session()
     pid = util.selected_process()
 
-    cmd = "result = Process.findModuleByAddress('" + \
-        addr+"').enumerateRanges('---');"
+    cmd = "result = Process.findModuleByAddress(ptr(" + \
+        addr + ")).enumerateRanges('---');"
     util.run_script_with_data("list_sections", cmd,
                               modpath, put_sections_callback)
 
 
-def ghidra_trace_put_sections(modpath, addr) -> None:
+def ghidra_trace_put_sections(modpath: str, addr: str) -> None:
     """
     Gather object files, if applicable, and write to the trace's module Sections
     """
@@ -1554,7 +1486,8 @@ def put_imports_callback(message: dict[str, Any], data: Any) -> None:
     for i in values:
         # print(f"I={i}")
         name = i['name']
-        addr = i['address']
+        if 'address' in i.keys():
+            addr = i['address']
         type = i['type']
         ipath = IMPORT_PATTERN.format(
             sid=sid, pid=pid, modpath=cbdata, addr=addr)
@@ -1575,16 +1508,16 @@ def put_imports_callback(message: dict[str, Any], data: Any) -> None:
         IMPORTS_PATTERN.format(sid=sid, pid=pid, modpath=cbdata)).retain_values(keys)
 
 
-def put_imports(modpath, addr, running=False) -> None:
+def put_imports(modpath: str, addr: str, running: bool = False) -> None:
     if running:
         return
-    cmd = "result = Process.findModuleByAddress('" + \
-        addr+"').enumerateImports();"
+    cmd = "result = Process.findModuleByAddress(ptr(" + \
+        addr + ")).enumerateImports();"
     util.run_script_with_data(
         "list_imports", cmd, modpath, put_imports_callback)
 
 
-def ghidra_trace_put_imports(modpath, addr) -> None:
+def ghidra_trace_put_imports(modpath: str, addr: str) -> None:
     """
     Gather object files, if applicable, and write to the trace's module Imports
     """
@@ -1625,16 +1558,16 @@ def put_exports_callback(message: dict[str, Any], data: Any) -> None:
         EXPORTS_PATTERN.format(sid=sid, pid=pid, modpath=cbdata)).retain_values(keys)
 
 
-def put_exports(modpath, addr, running=False) -> None:
+def put_exports(modpath: str, addr: str, running: bool = False) -> None:
     if running:
         return
-    cmd = "result = Process.findModuleByAddress('" + \
-        addr+"').enumerateExports();"
+    cmd = "result = Process.findModuleByAddress(ptr(" + \
+        addr + ")).enumerateExports();"
     util.run_script_with_data(
         "list_imports", cmd, modpath, put_exports_callback)
 
 
-def ghidra_trace_put_exports(modpath, addr) -> None:
+def ghidra_trace_put_exports(modpath: str, addr: str) -> None:
     """
     Gather object files, if applicable, and write to the trace's module exports
     """
@@ -1681,16 +1614,16 @@ def put_symbols_callback(message: dict[str, Any], data: Any) -> None:
         SYMBOLS_PATTERN.format(sid=sid, pid=pid, modpath=cbdata)).retain_values(keys)
 
 
-def put_symbols(modpath, addr, running=False) -> None:
+def put_symbols(modpath: str, addr: str, running: bool = False) -> None:
     if running:
         return
-    cmd = "result = Process.findModuleByAddress('" + \
-        addr+"').enumerateSymbols();"
+    cmd = "result = Process.findModuleByAddress(ptr(" + \
+        addr + ")).enumerateSymbols();"
     util.run_script_with_data(
         "list_symbols", cmd, modpath, put_symbols_callback)
 
 
-def ghidra_trace_put_symbols(modpath, addr) -> None:
+def ghidra_trace_put_symbols(modpath: str, addr: str) -> None:
     """
     Gather object files, if applicable, and write to the trace's module symbols
     """
@@ -1710,7 +1643,7 @@ def put_dependencies_callback(message: dict[str, Any], data: Any) -> None:
     mapper = trace.extra.require_mm()
     keys = []
     for dep in values:
-        # print(f"S={sym}")
+        # print(f"D={dep}")
         name = dep['name']
         type = dep['type']
         dpath = DEPENDENCY_PATTERN.format(
@@ -1726,16 +1659,16 @@ def put_dependencies_callback(message: dict[str, Any], data: Any) -> None:
         DEPENDENCIES_PATTERN.format(sid=sid, pid=pid, modpath=cbdata)).retain_values(keys)
 
 
-def put_dependencies(modpath, addr, running=False) -> None:
+def put_dependencies(modpath: str, addr: str, running: bool = False) -> None:
     if running:
         return
-    cmd = "result = Process.findModuleByAddress('" + \
-        addr+"').enumerateDependencies();"
+    cmd = "result = Process.findModuleByAddress(ptr(" + \
+        addr + ")).enumerateDependencies();"
     util.run_script_with_data("list_dependencies", cmd,
                               modpath, put_dependencies_callback)
 
 
-def ghidra_trace_put_dependencies(modpath, addr) -> None:
+def ghidra_trace_put_dependencies(modpath: str, addr: str) -> None:
     """
     Gather object files, if applicable, and write to the trace's module symbols
     """
@@ -1745,15 +1678,7 @@ def ghidra_trace_put_dependencies(modpath, addr) -> None:
         put_dependencies(modpath, addr)
 
 
-def convert_state(t) -> str:
-    if t.IsSuspended():
-        return 'SUSPENDED'
-    if t.IsStopped():
-        return 'STOPPED'
-    return 'RUNNING'
-
-
-def get_values_from_callback(message: Dict[str, Any], data: Any):
+def get_values_from_callback(message: Dict[str, Any], data: Any) -> Any:
     if message is None:
         return {}
     if message['type'] == 'error':
@@ -1767,7 +1692,7 @@ def get_values_from_callback(message: Dict[str, Any], data: Any):
     return json_dict['value']
 
 
-def get_data_from_callback(message: Dict[str, Any], data: Any):
+def get_data_from_callback(message: Dict[str, Any], data: Any) -> Any:
     if message is None or 'payload' not in message.keys():
         return {}
     payload = message['payload']
@@ -1776,7 +1701,7 @@ def get_data_from_callback(message: Dict[str, Any], data: Any):
     return json_dict['data']
 
 
-def put_event_thread(tid=None) -> None:
+def put_event_thread(tid: Optional[int] = None) -> None:
     pid = util.selected_process()
     # Assumption: Event thread is selected by pydbg upon stopping
     trace = STATE.require_trace()
@@ -1790,7 +1715,7 @@ def put_event_thread(tid=None) -> None:
     trace.proxy_object_path('').set_value('_event_thread', tobj)
 
 
-def compute_thread_display(i, pid, tid, t) -> str:
+def compute_thread_display(i: int, pid: Optional[int], tid: Optional[int], t: Dict[str, Any]) -> str:
     display = '{:d} {:x}:{:x}'.format(i, pid, tid)
     if t['name'] is not None:
         display += " " + t['name']
@@ -1848,7 +1773,7 @@ def put_threads_callback(message: Dict[str, Any], data: Any) -> None:
         THREADS_PATTERN.format(sid=sid, pid=pid)).retain_values(keys)
 
 
-def put_threads(running=False) -> None:
+def put_threads(running: bool = False) -> None:
     if running:
         return
     cmd = "result = Process.enumerateThreads();"
@@ -1865,7 +1790,7 @@ def ghidra_trace_put_threads() -> None:
         put_threads()
 
 
-def compute_frame_display(i, f) -> str:
+def compute_frame_display(i: int, f: Dict[str, Any]) -> str:
     display = '#{:d} {}'.format(i, f['address'])
     if f['name'] is not None:
         display += " " + f['name']
@@ -1942,18 +1867,6 @@ def ghidra_trace_put_frames() -> None:
         put_frames()
 
 
-def map_address(address):
-    pid = util.selected_process()
-    if pid is None:
-        return
-    trace = STATE.require_trace()
-    mapper = trace.extra.require_mm()
-    base, addr = mapper.map(pid, address)
-    if base != addr.space:
-        trace.create_overlay_space(base, addr.space)
-    return (base, addr)
-
-
 def put_loaded_classes_callback(message: dict[str, Any], data: Any) -> None:
     values = get_values_from_callback(message, data)
 
@@ -1998,7 +1911,7 @@ def put_loaded_classes_callback(message: dict[str, Any], data: Any) -> None:
         CLASSES_PATTERN.format(sid=sid, pid=pid)).retain_values(keys)
 
 
-def put_loaded_classes_objc(running=False) -> None:
+def put_loaded_classes_objc(running: bool = False) -> None:
     if running:
         return
     cmd = "result = ObjC.enumerateLoadedClassesSync();"
@@ -2016,7 +1929,7 @@ def ghidra_trace_put_loaded_classes_objc() -> None:
         put_loaded_classes_objc()
 
 
-def put_loaded_classes_java(running=False) -> None:
+def put_loaded_classes_java(running: bool = False) -> None:
     if running:
         return
     cmd = "result = Java.enumerateLoadedClassesSync();"
@@ -2052,7 +1965,7 @@ def put_class_loaders_callback(message: dict[str, Any], data: Any) -> None:
         LOADERS_PATTERN.format(sid=sid, pid=pid)).retain_values(keys)
 
 
-def put_class_loaders_java(running=False) -> None:
+def put_class_loaders_java(running: bool = False) -> None:
     if running:
         return
     cmd = "result = Java.enumerateClassLoadersSync();"
@@ -2116,7 +2029,7 @@ def get_prompt_text() -> str:
         return 'Running>'
 
 
-def exec_cmd(cmd) -> None:
+def exec_cmd(cmd: str) -> None:
     util.run_script_no_ret("", cmd, util.on_message_print)
 
 
