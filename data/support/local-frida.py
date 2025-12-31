@@ -16,7 +16,6 @@
 
 import os
 import sys
-from ghidrafrida.commands import *
 
 
 home = os.getenv('GHIDRA_HOME')
@@ -33,9 +32,13 @@ elif os.path.isdir(f'{home}\\.git'):
         f'{home}\\Ghidra\\Debug\\Debugger-rmi-trace\\build\\pypkg\\src')
 else:
     sys.path.append(
-        f'{home}\\Ghidra\\Debug\\Debugger-agent-xfrida\\pypkg\\src')
-    sys.path.append(f'{home}\\Ghidra\\Debug\\Debugger-rmi-trace\\pypkg\\src')
+        f"{os.getenv('MODULE_Debugger_rmi_trace_HOME')}/data/support")
+    from gmodutils import ghidra_module_pypath
+    sys.path.append(ghidra_module_pypath("Debugger-rmi-trace"))
+    sys.path.append(ghidra_module_pypath())
 
+
+from ghidrafrida.commands import *
 
 def main():
     # Delay these imports until sys.path is patched
