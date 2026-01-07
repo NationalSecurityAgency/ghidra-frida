@@ -13,26 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-// Not technically a Java project, but required to be a Help project
-apply from: "${rootProject.projectDir}/gradle/javaProject.gradle"
-apply from: "${rootProject.projectDir}/gradle/helpProject.gradle"
-apply from: "$rootProject.projectDir/gradle/distributableGhidraModule.gradle"
-apply from: "$rootProject.projectDir/gradle/nativeProject.gradle"
+
+apply from: "$rootProject.projectDir/gradle/distributableGhidraExtension.gradle"
 apply from: "$rootProject.projectDir/gradle/hasPythonPackage.gradle"
 
 apply plugin: 'eclipse'
-eclipse.project.name = 'Debug Debugger-agent-xfrida'
+eclipse.project.name = 'Xtra Debugger-agent-xfrida'
 
 repositories {
 	// Declare dependency repositories here.  This is not needed if dependencies are manually 
 	// dropped into the lib/ directory.
 	// See https://docs.gradle.org/current/userguide/declaring_repositories.html for more info.
 	// Ex: mavenCentral()
-}
-
-dependencies {
-	// Only for Help :/
-	api project(':Debugger-rmi-trace')
 }
 
 // Exclude additional files from the built extension

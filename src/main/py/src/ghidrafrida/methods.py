@@ -24,8 +24,6 @@ from ghidratrace import sch
 from ghidratrace.client import (
     MethodRegistry, ParamDesc, Address, AddressRange, TraceObject)
 
-import frida # type: ignore
-
 from . import util, commands
 
 

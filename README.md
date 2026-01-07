@@ -24,3 +24,13 @@ This command initializes the Gradle environment and downloads all required depen
 .\gradlew :Debugger-agent-xfrida:assemblePyPackage
 ```
 This builds the Python package that integrates Frida with Ghidra's trace RMI interface.
+
+#### Package as Ghidra Extension (ZIP)
+```bash
+.\gradlew :Debugger-agent-xfrida:zipExtensions
+```
+This creates a standalone ZIP extension package that can be installed via Ghidra's `File > Install Extensions` menu.
+
+The output file will be located at:
+```
+build/dist/ghidra_<version>_<date>_Debugger-agent-xfrida.zip
