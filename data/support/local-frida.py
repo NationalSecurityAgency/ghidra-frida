@@ -22,14 +22,14 @@ home = os.getenv('GHIDRA_HOME')
 
 if os.path.isdir(f'{home}\\ghidra\\.git'):
     sys.path.append(
-        f'{home}\\ghidra.ext-u\\Ghidra\\Extensions\\Debugger-agent-xfrida\\build\\pypkg\\src')
-    sys.path.append(
         f'{home}\\ghidra\\Ghidra\\Debug\\Debugger-rmi-trace\\build\\pypkg\\src')
+    sys.path.append(
+        f'{home}\\ghidra.ext-u\\Ghidra\\Extensions\\Debugger-agent-xfrida\\build\\pypkg\\src')
 elif os.path.isdir(f'{home}\\.git'):
     sys.path.append(
-        f'{home}\\Ghidra\\Debug\\Debugger-agent-xfrida\\build\\pypkg\\src')
-    sys.path.append(
         f'{home}\\Ghidra\\Debug\\Debugger-rmi-trace\\build\\pypkg\\src')
+    sys.path.append(
+        f'{home}\\Ghidra\\Debug\\Debugger-agent-xfrida\\build\\pypkg\\src')
 else:
     sys.path.append(
         f"{os.getenv('MODULE_Debugger_rmi_trace_HOME')}/data/support")
