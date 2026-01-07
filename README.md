@@ -2,6 +2,8 @@
 - Description: support for Frida-based analysis using the Ghidra traceRMI
 - Author: d-millar
 
+---
+
 ## Build Guide
 
 ### Step-by-Step Compilation Instructions
@@ -19,6 +21,6 @@ This command initializes the Gradle environment and downloads all required depen
 
 #### Build the Python Package
 ```bash
-.\gradlew :Debugger-agent-xfrida:buildPyPackage
+.\gradlew :Debugger-agent-xfrida:assemblePyPackage
 ```
 This builds the Python package that integrates Frida with Ghidra's trace RMI interface.
