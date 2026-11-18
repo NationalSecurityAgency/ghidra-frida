@@ -172,7 +172,7 @@ class GhidraDbg(object):
         elif self._device_id == "remote":
             self._protected_base = frida.get_remote_device()
         elif self._device_id == "usb":
-            self._protected_base = frida.get_usbl_device()
+            self._protected_base = frida.get_usb_device()
         else:
             self._protected_base = frida.get_device(self._device_id)
 
